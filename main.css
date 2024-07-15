@@ -18,7 +18,7 @@ code {
 }
 
 a {
-    text-decoration: none; color: #22a;
+    text-decoration: underline; color: #22a;
 }
 h1 {
     font-size: 200%;

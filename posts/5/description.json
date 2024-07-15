@@ -1,0 +1,9 @@
+[
+    {
+        "title": "How to run your own Verilog on roboRIO",
+        "img": "thumbnail.png",
+        "alt": "roboRIO image",
+        "content": "A small tutorial (for FRC people) of running your own Xilinx Vivado design on roboRIO",
+        "date": "14/07/2024"
+    }
+]

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="gvl610's stupid writeups :)">
+    <meta name="keywords" content="gvl610, giangvinhloc610, raspiduino, Giang Vinh Loc">
+    <meta name="author" content="Giang Vinh Loc">
+
+    <!-- favicon -->
+    <link rel="icon" type="image/x-icon" href="https://gvl610.github.io/imgs/kp.jpg">
+
+    <!-- title -->
+    <title>How to run your own Verilog on roboRIO</title>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="../../main.css">
+
+    <!-- Highlight.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.6.0/styles/default.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.6.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+    <a href="https://gvl610.github.io"><img style="float: right;" src="https://gvl610.github.io/imgs/kp.jpg" width="134" height="134" alt="kernel panik icon"></a>
+
+    <!-- Main content -->
+    <h1>How to run your own Verilog on roboRIO</h1>
+    <br>
+    <hr>
+
+    <p>Github repo: <a href="https://github.com/fpga4roborio/lv-adder">https://github.com/fpga4roborio/lv-adder</a></p>
+
+    <h2>1. What is roboRIO?</h2>
+    <p>(Feel free to skip this if you already know about it. This section is aimed at non-FRC people who somehow got access to a roboRIO and want to run some Verilog on it)</p>
+    <center><img src="am-3000.jpg" alt="roboRIO 1.0"></center>
+    <br>
+
+    <p>From <a href="https://docs.wpilib.org/">WPILib's docs</a>:</p>
+    <blockquote cite="https://docs.wpilib.org/en/stable/docs/software/roborio-info/roborio-introduction.html#:~:text=The%20roboRIO%20is%20a,and%20customizable%20Xilinx%20FPGA.">
+        The roboRIO is a reconfigurable robotics controller that includes built-in ports for inter-integrated circuits (I2C), serial peripheral interfaces (SPI), RS232, USB, Ethernet, pulse width modulation (PWM), and relays to quickly connect the common sensors and actuators used in robotics. The controller features LEDs, buttons, an onboard accelerometer, and a custom electronics port. It has an onboard dual-core ARM real-time Cortex‑A9 processor and customizable Xilinx FPGA.
+    </blockquote>
+    <p>So basically it:
+        <br>&emsp;- Is a Xilinx Zynq-7000 based board for controlling <a href="https://www.firstinspires.org/robotics/frc">FRC</a> robots,
+        <br>&emsp;- Uses Zynq Z-7020 SoC (exact part name <code>xc7z020clg400-1</code> for roboRIO 1.0 and something like <code>xc7z020clg400-2</code> (higher clock) for roboRIO 2.0)
+        <br>&emsp;- Runs NI Realtime Linux (kernel version 4.14)
+        <br>&emsp;- Is primarily programmed via C/Java (using <a href="https://docs.wpilib.org/">WPILib</a>, without direct access to FPGA) or LabVIEW (less commonly used, but can access FPGA).
+        <br>For more details on roboRIO's specifications, see <a href="https://www.ni.com/docs/en-US/bundle/roborio-frc-specs/page/specs.html">roboRIO 1.0's spec</a> and <a href="https://www.ni.com/docs/en-US/bundle/roborio-20-umanual/page/umanual.html#GUID-979BA328-46B1-4EDD-93C3-E51672B08B92__GUID-3068AD90-A6F0-403D-9AA6-679FA3079215">RoboRIO 2.0's spec</a>.
+        <br><b>This post will mainly focus on roboRIO 1.0 (because I only have that version for now), but steps may be replicated on roboRIO 2.0 with minimal modifications and equal success.</b>
+    </p>
+
+    <h2>2. Why using roboRIO as an FPGA?</h2>
+    <p>So why one may want to use roboRIO as an FPGA? Can't they just buy a proper that is designed for that purpose for a easier life? Well:
+        <br>&emsp;- <a href="https://www.firstinspires.org">FIRST</a> (the organization responsible for FRC and FTC) has issued a <a href="https://www.firstinspires.org/sites/default/files/uploads/resource_library/frc/frc-ftc-RFP-2027-robot-controller.pdf">request for proposal</a> of new robot control system that included requirements like <code>. CPU – 64 bit (ARM64, 64-bit RISC-V, or x86-64), 1GHz+, Dual core. Quadcore preferred</code> or <code>RAM – 4GB minimum, at least 3GB available to user code. 8GB+ preferred.</code> which current roboRIO versions cannot fulfill and may soon be deprecated. At that point, instead of throwing them away, people might want to reuse them as a normal FPGA (maybe for learning some FPGA).
+        <br>&emsp;- Some Zynq-7020 based board might lying around on the internet, ranging from <a href="https://www.ebay.com/itm/185832997760">$85</a> to over <a href="https://www.xilinx.com/products/boards-and-kits/1-1bkpiyc.html">$340</a> (I have seen crazier prices like over $4000 or even just $32). But for someone who already got a roboRIO (maybe from their FRC team) like me, they probably don't need to buy another FPGA.
+        <br>&emsp;- RoboRIO has strong built-in protection for electrical faults (at least from my perspective). It's probably required to withstand these faults to some degree, since it's designed for students to use (and of course they tend to make electrical mistakes).
+        <br>&emsp;- Some people might love LabVIEW (I personally don't, but maybe someone will do). RoboRIO support LabVIEW from its first day.
+        <br>Whatever your reasons are, if you want to run your own FPGA logic on your roboRIO, this post is for you!
+    </p>
+
+    <h2>3. Installing softwares</h2>
+        <p>It will takes you a day! So prepare your time. You might keep your computer running and go to sleep.</p>
+        <p>Recommened environment: Windows 10+</p>
+    <h3>3.1. Installing Xilinx Vivado</h3>
+        <p>You will need the <b>EXACT VERSION</b> of Vivado <b>2021.1</b> for NI LabVIEW 2023 & 2024 (that version may change in the future, so please check yourself). Otherwise there will be compatiblity problems with LabVIEW (I tried and failed, so you won't want to). For more information, see <a href="https://www.ni.com/en/support/documentation/compatibility/19/compatibility-between-xilinx-compilation-tools-and-ni-fpga-hardware.html">this</a>.<br>Download that version from <a href="https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html">this</a> page and install it.
+        <br>The installer is pretty straightforward, but the installation may take a few hours to run.
+        <br>When it comes to components selection, just select to install Vivado, and untick all other options except for Zynq-7000 series. You will need about 60GB of free disk space for that configuration.</p>
+    <h3>3.2. Installing NI LabVIEW and roboRIO support packages</h3>
+        <p>You will need to install <a href="https://www.ni.com/en/support/downloads/software-products/download.package-manager.html">NI Package Manager</a>. Then open it up, and install the following packages (in exact order):</p>
+        <table style="border: 1px solid black;" rules="all">
+            <tr>
+                <td>Package name</td>
+                <td>Package image</td>
+                <td>Package details</td>
+                <td>Notes</td>
+            </tr>
+            <tr>
+                <td>FRC Game Tools</td>
+                <td><img src="fgt.png" alt="FRC Game Tools"></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>LabVIEW Software for FRC</td>
+                <td><img src="lvfrc.png" alt="LabVIEW Software for FRC"></td>
+                <td><img src="lvfrc-details.png" alt="LabVIEW Software for FRC packages"></td>
+                <td>Note the installed LabVIEW version at bitness on your computer after installing this package.</td>
+            </tr>
+            <tr>
+                <td>LabVIEW and Drivers</td>
+                <td><img src="lv.png" alt="LabVIEW and Drivers"></td>
+                <td><img src="lv-details.png" alt="LabVIEW and Drivers details"></td>
+                <td>Select the LabVIEW version and bitness you noted in the previous package installation.</td>
+            </tr>
+        </table>
+
+    <h2>4. Use Vivado to synthesize your IP module</h2>
+    <p>In this post, we try a simple 8-bit adder in Verilog:</p>
+    <pre><code class="verilog">`timescale 1ns / 1ps
+
+module Adder(
+
+    input          clk,
+    input           cEn,
+    input          aReset,
+    input          [7:0] dataInA,
+    input          [7:0] dataInB,
+    output reg  [7:0] dataOut
+    
+    );
+
+always @ (posedge clk)
+
+begin
+
+    if(aReset)
+        dataOut <= 0;
+    else
+        begin
+            if (cEn)
+                dataOut <= dataInA + dataInB;
+        end 
+        
+end         
+
+endmodule</code></pre>
+    
+    <p>First, open Vivado, then create a project:</p>
+    <br><img src="vivado-newproject.png" alt="New project: create new project">
+
+    <br><p>Give it a name and a working directory:</p>
+    <br><img src="vivado-newproject2.png" alt="New project: new project name & directory">
+
+    <br><p>Select project type:</p>
+    <br><img src="vivado-newproject3.png" alt="New project: select project type">
+
+    <br><p>Select your FPGA part name. roboRIO 1.0 (the version with LabVIEW text on its cover) has part name of <code>xc7z020clg400-1</code> and roboRIO 2.0 has part name of <code>xc7z020clg400-2</code> (need more confirmation on roboRIO 2.0 part name)</p>
+    <br><img src="vivado-newproject4.png" alt="New project: select FPGA part name">
+
+    <br><p>Finally, click <kbd>Next</kbd> and then <kbd>Finish</kbd> to create the project:</p>
+    <br><img src="vivado-aftercreating.png" alt="Project created">
+
+    <br><p>Click on <kbd>Add Sources</kbd>, then select <kbd>Add or create design source</kbd> and click <kbd>Next</kbd>:</p>
+    <br><img src="vivado-addv1.png" alt="Add our Verilog code">
+
+    <br><p>Click on <kbd>Create File</kbd>, then set language type and file name:</p>
+    <br><img src="vivado-addv2.png" alt="Create Verilog file">
+
+    <br><p>Click on <kbd>Ok</kbd>, then <kbd>Finish</kbd>, then you have your new Verilog file opened in the editor:</p>
+    <br><img src="vivado-addv3.png" alt="Verilog file">
+
+    <br><p>Paste the Verilog code in, then click save</p>
+    <br><img src="vivado-addv4.png" alt="Verilog file">
+
+    <br><p>Click on <kbd>Settings</kbd> -> <kbd>Synthesis</kbd> -> <kbd>More Options</kbd> then fill in <code>-mode out_of_context</code>. This is required for calling Verilog code from VHDL, since LabVIEW only support VHDL import. You may choose to use VHDL from the starting point, but this post will follow Verilog. After that, click <kbd>Apply</kbd> and then <kbd>OK</kbd>.</p>
+    <br><img src="vivado-addv5.png" alt="Change settings">
+
+    <br><p>Next, run synthesis:</p>
+    <br><img src="vivado-synth.png" alt="Run synthesis">
+    <img src="vivado-synth2.png" alt="Run synthesis">
+
+    <br><p>Wait until you see this dialog, then select <kbd>Open Synthesized Design</kbd> and click on <kbd>OK</kbd></p>
+    <br><img src="vivado-synth3.png" alt="Open synthesis">
+
+    <br><p>Using the same <kbd>Add Sources</kbd> process, add a VHDL file named <code>AdderWrapper</code></p>
+    <br><img src="vivado-addw1.png" alt="Add VHDL file">
+
+    <br><p>Fill this in the <kbd>Define Module</kbd> dialog:</p>
+    <br><img src="vivado-addw2.png" alt="Define module">
+
+    <p>Open the file <code>AdderWrapper</code> file and then paste this VHDL code in and then save:</p>
+    <pre><code class="vhdl">----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: 
+-- 
+-- Create Date: 07/14/2024 01:29:22 PM
+-- Design Name: 
+-- Module Name: AdderWrapper - Behavioral
+-- Project Name: 
+-- Target Devices: 
+-- Tool Versions: 
+-- Description: 
+-- 
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+-- 
+----------------------------------------------------------------------------------
+
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
+
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx leaf cells in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
+
+entity AdderWrapper is
+    Port ( clk : in STD_LOGIC;
+           cEn : in STD_LOGIC;
+           aReset : in STD_LOGIC;
+           dataInA : in STD_LOGIC_VECTOR (7 downto 0);
+           dataInB : in STD_LOGIC_VECTOR (7 downto 0);
+           dataOut : out STD_LOGIC_VECTOR (7 downto 0));
+end AdderWrapper;
+
+architecture Behavioral of AdderWrapper is
+
+component Adder 
+    port ( clk : in STD_LOGIC;
+           cEn : in STD_LOGIC;
+           aReset : in STD_LOGIC;
+           dataInA : in STD_LOGIC_VECTOR(7 downto 0);
+           dataInB : in STD_LOGIC_VECTOR(7 downto 0);
+           dataOut : out STD_LOGIC_VECTOR(7 downto 0));
+end component;
+
+begin
+
+Adder_x : Adder 
+    port map (
+        clk => clk,
+        cEn => cEn,
+        aReset => aReset,
+        dataInA => dataInA,
+        dataInB => dataInB,
+        dataOut => dataOut);
+
+end Behavioral;</code></pre>
+
+    <br><p>Work on Vivado is done now. Now you can switch to LabVIEW side.</p>
+
+    <br><p>Open <kbd>NI LabVIEW 2023 Q3 (32-bit):</kbd></p>
+    <br><img src="lv-menu.png" alt="LabVIEW main menu">
+
+    <br><p>Create a blank project:</p>
+    <br><img src="lv-create-prj.png" alt="LabVIEW create project">
+    <img src="lv-blankprj.png" alt="LabVIEW blank project">
+
+    <br><p>Add roboRIO target:</p>
+    <br><img src="lv-addtarget1.png" alt="LabVIEW add target">
+    <img src="lv-addtarget2.png" alt="LabVIEW add target">
+
+    <br><p>Set roboRIO IP by right click on <kbd>Project</kbd>, then <kbd>Properties</kbd> -> <kbd>General</kbd> -> <kbd>IP address</kbd>:</p>
+    <br><img src="lv-addtarget3.png" alt="LabVIEW add target">
+
+    <br><p>Add FPGA target by right click on <kbd>Chassis (roboRIO)</kbd>, then <kbd>New</kbd> -> <kbd>FPGA Target</kbd>:</p>
+    <br><img src="lv-addtarget4.png" alt="LabVIEW add FPGAs">
+
+    <br><p>Add CLIP (Component-level IP) by right click on <kbd>FPGA Target (RIO0, roboRIO)</kbd> -> <kbd>Component-Level IP</kbd> -> <kbd>New</kbd>:</p>
+    <br><img src="lv-addclip1.png" alt="LabVIEW add CLIP">
+
+    <br><p>Configure the next page as follow:</p>
+    <br><img src="lv-addclip3.png" alt="LabVIEW add CLIP">
+
+    <br><p>After that, click <kbd>Check Syntax</kbd> on the next page, then just <kbd>Next</kbd> until the process finishes. Then click <kbd>OK</kbd>.</p>
+    <br><img src="lv-addclip4.png" alt="LabVIEW add CLIP">
+
+    <br><p>Add CLIP by right click on <kbd>FPGA Target</kbd> -> <kbd>New</kbd> -> <kbd>Component-Level IP</kbd>.</p>
+    <br><img src="lv-addclip5.png" alt="LabVIEW add CLIP">
+
+    <br><p>Select <code>AdderWrapper</code> and the 40MHz clock. You can create derived clock from that 40MHz clock if you want to.</p>
+    <br><img src="lv-addclip6.png" alt="LabVIEW add CLIP">
+    <img src="lv-addclip7.png" alt="LabVIEW add CLIP">
+
+    <br><p>Add <a href="https://github.com/fpga4roborio/lv-adder/blob/main/rioAdder_lv/FPGA%20VI.vi"><code>FPGA VI.vi</code></a> to the project.</p>
+    <br><img src="lv-addlv.png" alt="LabVIEW add LV file">
+
+    <br><p>After that, just right click on roboRIO target, click on <kbd>Connect</kbd> to connect to target.</p>
+    <br><img src="lv-run1.png" alt="LabVIEW connect to target">
+
+    <br><p>Select <kbd>Run</kbd> on the <code>FPGA VI.vi</code> file. Then it will ask you to compile the FPGA code. Select local compile server, then let it run.</p>
+    <br><img src="lv-run2.png" alt="LabVIEW compile FPGA file">
+
+    <p>After the compilation is done, click on close. Then ssh to roboRIO (by <code>ssh admin@[ip]</code>) then rename the default WPILib lvbitx file:</p>
+
+    <pre><code>NI Linux Real-Time (run mode)
+
+Log in with your NI-Auth credentials.
+
+admin@roboRIO-6520-FRC:~# cd /usr/local/frc/bitfiles/
+admin@roboRIO-6520-FRC:/usr/local/frc/bitfiles# ls
+roboRIO_FPGA_2024_24.0.0.lvbitx
+admin@roboRIO-6520-FRC:/usr/local/frc/bitfiles# mv roboRIO_FPGA_2024_24.0.0.lvbitx roboRIO_FPGA_2024_24.0.0.org.lvbitx
+roboRIO_FPGA_2024_24.0.0.org.lvbitx
+admin@roboRIO-6520-FRC:/usr/local/frc/bitfiles#</code></pre>
+
+    <br><p>Select <kbd>Run</kbd> on the <code>FPGA VI.vi</code> file. Finally, you have the adder:</p>
+    <br><img src="lv-run3.png" alt="LabVIEW run">
+
+    <hr><p>Reference:
+    <br>https://fpganow.com/index.php/2018/04/03/labview-fpga-microblaze-and-uart-full-guide/
+    <br>https://knowledge.ni.com/KnowledgeArticleDetails?id=kA03q000000x4G6CAI
+    <br>https://knowledge.ni.com/KnowledgeArticleDetails?id=kA03q000000x0jiCAA
+    <br>https://www.ni.com/en/support/documentation/compatibility/19/compatibility-between-xilinx-compilation-tools-and-ni-fpga-hardware.html</p>
+
+    <!-- copyleft notice -->
+    <footer id="copyleft_text" style="float: right;"></footer>
+    <noscript>
+        <!-- If you don't have Javascript :) Are you using Nescape or Tor? -->
+        <footer id="copyleft_text" style="float: right;">Copyleft 2022-now Giang Vinh Loc</footer>
+    </noscript>
+    <script type="text/javascript">
+        var year = new Date().getFullYear(); // Get current year in number
+        
+        if (year < 2022) {
+            // What the heck?
+            document.getElementById("copyleft_text").innerText = "Copyleft 2022 Giang Vinh Loc. Are you time travelling?"         
+        }
+
+        else if (year == 2022) {
+            document.getElementById("copyleft_text").innerText = "Copyleft 2022 Giang Vinh Loc"
+        }
+
+        else if (year > 2022) {
+            document.getElementById("copyleft_text").innerText = "Copyleft 2022-" + year.toString() + " Giang Vinh Loc"
+        }
+
+        else {
+            document.getElementById("copyleft_text").innerText = "Copyleft 2022 Giang Vinh Loc. Is your Javascript VM crazy?"
+        }
+    </script>
+</body>
+</html>
